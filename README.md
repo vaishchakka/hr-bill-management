@@ -40,3 +40,11 @@ This is a **local development server**, bound to 127.0.0.1. `X-Demo-Role` and th
 For a real launch: replace the demo identity with verified login and server-side role assignments, replace the JSON adapter with a transactional database, and deploy the backend to an appropriate server runtime. Deploy this application to a hosting service that supports Node.js. Import processing, real membership, audit history, quorum/majority rules, and finalized ballot results are not implemented. Manual status changes remain part of the wireframe.
 
 JSON storage is suitable for one local process. It is not a multi-process database. Set `DATA_FILE` to change its location, and `PORT` to change the port.
+
+## Supabase setup (in progress)
+
+Copy `.env.example` to `.env` and fill in the project URL and publishable key. `.env` is ignored by Git. Run `npm run check:supabase` to verify project access; this probes Auth settings, not database tables or login.
+
+In your Supabase project's SQL Editor, run `supabase/migrations/202611170001_initial_schema.sql` once. It creates memberships, bills, sessions, ballots, and votes. A unique vote key prevents duplicate member votes per ballot. Row-level security is enabled and application data is denied by default; users can only read their own assigned membership.
+
+This is a connection/schema foundation. The running app still uses the JSON demo backend. Database commands, authenticated login, membership assignment, and Realtime subscriptions are not wired yet. Do not disable row-level security to make the demo work. The next migration will add authenticated read policies and transactional RPCs before enabling database voting. Do not run the demo role switcher as an authorization mechanism against Supabase.

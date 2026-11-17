@@ -2,10 +2,13 @@
   "name": "gt-house-leadership",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-    "dev": "node --watch backend/src/server.js",
-    "start": "node backend/src/server.js",
-    "test": "node --test backend/test/*.test.js"
+    "dev": "node --env-file-if-exists=.env --watch backend/src/server.js",
+    "start": "node --env-file-if-exists=.env backend/src/server.js",
+    "test": "node --test backend/test/*.test.js",
+    "check:supabase": "node --env-file-if-exists=.env scripts/check-supabase.js"
   }
 }
