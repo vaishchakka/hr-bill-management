@@ -2,9 +2,11 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { resolve, extname } from 'node:path';
+import { supabaseConfig } from './supabase.js';
 import { createStore } from './store.js';
 import { ApiError, execute, snapshot } from './service.js';
 
+const demoMode = process.env.APP_MODE === 'demo';
 const root = fileURLToPath(new URL('../../frontend/', import.meta.url));
 const store = createStore(process.env.DATA_FILE || fileURLToPath(new URL('../data/state.json', import.meta.url)));
 const port = Number(process.env.PORT || 4317);
@@ -23,6 +25,14 @@ createServer(async (req, res) => {
       if (req.headers.origin && ![allowedOrigin, `http://127.0.0.1:${port}`].includes(req.headers.origin)) {
         throw new ApiError(403, 'Origin not allowed');
       }
+      if (path === '/api/config' && req.method === 'GET') {
+        if (demoMode) return json(res, 200, { mode: 'demo' });
+        try {
+          const config = supabaseConfig();
+          return json(res, 200, { mode: 'supabase', url: config.url, publishableKey: config.key });
+        } catch { throw new ApiError(503, 'Configure Supabase in .env, or explicitly set APP_MODE=demo'); }
+      }
+      if (!demoMode) throw new ApiError(503, 'Session API is not connected yet');
       const role = req.headers['x-demo-role'];
       if (!['admin', 'member'].includes(role)) throw new ApiError(401, 'Demo role required');
       // Both preview roles represent the same demo user. Replace with verified
@@ -43,7 +53,7 @@ createServer(async (req, res) => {
       throw new ApiError(404, 'API route not found');
     }
     if (req.method !== 'GET' && req.method !== 'HEAD') throw new ApiError(405, 'Method not allowed');
-    const files = { '/': 'index.html', '/index.html': 'index.html', '/app.js': 'app.js', '/style.css': 'style.css', '/api.js': 'api.js' };
+    const files = { '/': 'index.html', '/index.html': 'index.html', '/app.js': 'app.js', '/style.css': 'style.css', '/api.js': 'api.js', '/generated/connected.js': 'generated/connected.js' };
     if (!files[path]) throw new ApiError(404, 'Not found');
     const file = resolve(root, files[path]);
     const content = await readFile(file);

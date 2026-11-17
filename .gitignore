@@ -5,3 +5,5 @@ backend/data/
 
 .env.*
 !.env.example
+
+frontend/generated/

@@ -9,6 +9,15 @@
     "dev": "node --env-file-if-exists=.env --watch backend/src/server.js",
     "start": "node --env-file-if-exists=.env backend/src/server.js",
     "test": "node --test backend/test/*.test.js",
-    "check:supabase": "node --env-file-if-exists=.env scripts/check-supabase.js"
+    "check:supabase": "node --env-file-if-exists=.env scripts/check-supabase.js",
+    "build": "node scripts/build.js",
+    "predev": "npm run build",
+    "prestart": "npm run build"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.119.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
   }
 }

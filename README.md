@@ -48,3 +48,11 @@ Copy `.env.example` to `.env` and fill in the project URL and publishable key. `
 In your Supabase project's SQL Editor, run `supabase/migrations/202611170001_initial_schema.sql` once. It creates memberships, bills, sessions, ballots, and votes. A unique vote key prevents duplicate member votes per ballot. Row-level security is enabled and application data is denied by default; users can only read their own assigned membership.
 
 This is a connection/schema foundation. The running app still uses the JSON demo backend. Database commands, authenticated login, membership assignment, and Realtime subscriptions are not wired yet. Do not disable row-level security to make the demo work. The next migration will add authenticated read policies and transactional RPCs before enabling database voting. Do not run the demo role switcher as an authorization mechanism against Supabase.
+
+## Connected sign-in
+
+Run `npm install`, configure `.env`, then `npm run dev`. Node serves the bundled official Supabase client and sign-in screen. The browser signs in directly with Supabase Auth, verifies identity with `getUser`, and reads only the signed-in user's membership under the existing RLS policy. No extra migration is needed for this step.
+
+Connected mode is now the default. Approved accounts see their database role; unapproved accounts see Access pending. Session and voting controls are deliberately unavailable until transactional database commands and read permissions are implemented. The old demo API is rejected in connected mode. To explicitly run the old local wireframe, use `APP_MODE=demo npm run dev`.
+
+`npm run build` bundles browser dependencies into ignored `frontend/generated/`; `npm run dev` and `npm start` run it automatically. The public config endpoint exposes only the project URL and publishable key. Never add secret keys there. A successful build and unit tests do not validate a real account login; test sign-in/sign-out, wrong passwords, and an unapproved second account manually before deployment.
