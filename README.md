@@ -68,3 +68,9 @@ Then run `supabase/tests/permission_helpers.sql` as a separate query in the SQL 
 Run migration `202611170003_read_session_state.sql`, then run `supabase/tests/read_session_state.sql` separately. The read-only `get_house_state()` RPC requires approved membership and returns `{role, session, bills, ballot}`. Members receive only the currently presented bill; admins receive all bills. No active session yields a null session; an active session without a selected bill yields an empty bill list for members. No individual votes are returned. Raw table grants remain unchanged. The frontend is not switched to this RPC yet.
 
 The SQL checks use rolled-back fixtures and temporarily mark any existing active session inactive within that transaction only. Run the full test script; on error, issue `ROLLBACK;` before retrying. These are integration checks to execute against Supabase, not Node unit tests.
+
+### Start a session (step 3a)
+
+Run migration `202611170004_start_house_session.sql`, then separately run `supabase/tests/start_house_session.sql` in full. `start_house_session()` is an authenticated admin-only RPC returning the active session object. Repeated starts return that same object, preserving any presented bill and making no redundant update. A transaction-level advisory lock serializes simultaneous starts even when no session row exists; the existing partial unique index also enforces one active session. Future end/present functions must acquire the same `(712804, 1)` lifecycle lock before row locks.
+
+The SQL checks cover creation, repeated starts, snapshot consistency, preserved presentation, blocked member/unapproved/missing/anonymous identities, and denied raw writes. They do not execute a multi-connection concurrency test. All fixtures roll back. Starting a session does not create a ballot or publish notifications yet; Realtime subscriptions and the UI button are separate steps.
