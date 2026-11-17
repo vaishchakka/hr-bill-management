@@ -62,3 +62,9 @@ Connected mode is now the default. Approved accounts see their database role; un
 Run `supabase/migrations/202611170002_permission_helpers.sql` in the SQL Editor after migration 001. It adds private `is_member`, `is_admin`, `require_member`, and `require_admin` helpers. Admins count as approved members. Checks use `auth.uid()` and the membership table, never client-provided roles or user metadata. Anonymous access is revoked. Do not add `house_private` to the Data API exposed schemas.
 
 Then run `supabase/tests/permission_helpers.sql` as a separate query in the SQL Editor. It asserts admin, member, unapproved, missing-identity, and self-promotion behavior using fixtures in a rolled-back transaction. If an assertion fails, run `ROLLBACK;` before retrying. These SQL tests require PostgreSQL/Supabase and are not part of `npm test`. This step does not enable any session or voting operations and needs no frontend changes.
+
+### Read session state (step 2)
+
+Run migration `202611170003_read_session_state.sql`, then run `supabase/tests/read_session_state.sql` separately. The read-only `get_house_state()` RPC requires approved membership and returns `{role, session, bills, ballot}`. Members receive only the currently presented bill; admins receive all bills. No active session yields a null session; an active session without a selected bill yields an empty bill list for members. No individual votes are returned. Raw table grants remain unchanged. The frontend is not switched to this RPC yet.
+
+The SQL checks use rolled-back fixtures and temporarily mark any existing active session inactive within that transaction only. Run the full test script; on error, issue `ROLLBACK;` before retrying. These are integration checks to execute against Supabase, not Node unit tests.
