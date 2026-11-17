@@ -56,3 +56,9 @@ Run `npm install`, configure `.env`, then `npm run dev`. Node serves the bundled
 Connected mode is now the default. Approved accounts see their database role; unapproved accounts see Access pending. Session and voting controls are deliberately unavailable until transactional database commands and read permissions are implemented. The old demo API is rejected in connected mode. To explicitly run the old local wireframe, use `APP_MODE=demo npm run dev`.
 
 `npm run build` bundles browser dependencies into ignored `frontend/generated/`; `npm run dev` and `npm start` run it automatically. The public config endpoint exposes only the project URL and publishable key. Never add secret keys there. A successful build and unit tests do not validate a real account login; test sign-in/sign-out, wrong passwords, and an unapproved second account manually before deployment.
+
+### Permission helpers (step 1)
+
+Run `supabase/migrations/202611170002_permission_helpers.sql` in the SQL Editor after migration 001. It adds private `is_member`, `is_admin`, `require_member`, and `require_admin` helpers. Admins count as approved members. Checks use `auth.uid()` and the membership table, never client-provided roles or user metadata. Anonymous access is revoked. Do not add `house_private` to the Data API exposed schemas.
+
+Then run `supabase/tests/permission_helpers.sql` as a separate query in the SQL Editor. It asserts admin, member, unapproved, missing-identity, and self-promotion behavior using fixtures in a rolled-back transaction. If an assertion fails, run `ROLLBACK;` before retrying. These SQL tests require PostgreSQL/Supabase and are not part of `npm test`. This step does not enable any session or voting operations and needs no frontend changes.
