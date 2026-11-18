@@ -78,3 +78,9 @@ The SQL checks cover creation, repeated starts, snapshot consistency, preserved 
 ### End a session (step 3b)
 
 Run migration `202611170005_end_house_session.sql`, then separately run the entire `supabase/tests/end_house_session.sql`. `end_house_session(p_session_id)` is admin-only, takes the shared lifecycle lock, locks its session and ballots, closes open ballots, and marks that session ended with no presented bill. Repeated calls return the ended session. An old session ID never ends a newer active session. Null IDs and unknown sessions are rejected. Votes, bill documents, and finalized ballots are retained. The test fixtures all roll back; the test is not a multi-connection concurrency test. No UI/Realtime wiring is included in this step.
+
+### Present a bill (step 4a)
+
+Run migration `202611170006_present_house_bill.sql`, then separately run all of `supabase/tests/present_house_bill.sql`. `present_house_bill(p_session_id, p_bill_id)` requires admin membership, an existing active session, and an existing bill. It takes the lifecycle lock, session row lock, document lock, and ordered ballot locks. Switching to a different bill closes all open ballots in that session, then changes the displayed bill atomically. Retrying the same bill preserves voting. It does not change bill lifecycle, create ballots, or open voting. Any existing bill, including a draft, may be presented for discussion.
+
+Tests assert display changes, member visibility, closed old voting, retained finalized ballots and votes, safe retries, rejected invalid inputs and ended sessions, and denied unauthorized callers. They roll back all fixture changes. They have not been run against Supabase automatically. No frontend or Realtime changes are included here.
