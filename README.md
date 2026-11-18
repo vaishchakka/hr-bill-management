@@ -84,3 +84,15 @@ Run migration `202611170005_end_house_session.sql`, then separately run the enti
 Run migration `202611170006_present_house_bill.sql`, then separately run all of `supabase/tests/present_house_bill.sql`. `present_house_bill(p_session_id, p_bill_id)` requires admin membership, an existing active session, and an existing bill. It takes the lifecycle lock, session row lock, document lock, and ordered ballot locks. Switching to a different bill closes all open ballots in that session, then changes the displayed bill atomically. Retrying the same bill preserves voting. It does not change bill lifecycle, create ballots, or open voting. Any existing bill, including a draft, may be presented for discussion.
 
 Tests assert display changes, member visibility, closed old voting, retained finalized ballots and votes, safe retries, rejected invalid inputs and ended sessions, and denied unauthorized callers. They roll back all fixture changes. They have not been run against Supabase automatically. No frontend or Realtime changes are included here.
+
+### Hide a bill (step 4b)
+
+Run migration `202611170007_hide_house_bill.sql`, then run all of `supabase/tests/hide_house_bill.sql` separately. `hide_house_bill(p_session_id)` is admin-only and accepts only an existing active session. It takes the same lifecycle/session/ballot locks as present/end, closes all open ballots in that session, and clears its displayed bill while leaving the meeting active. Repeated calls are safe. Bills, votes, and finalized ballots remain intact. Member snapshots return the waiting state afterward.
+
+The rollback-based SQL checks cover authorization, invalid/ended sessions, repeated calls, voting closure, retained data, and member visibility. Run them against Supabase; Node tests do not execute SQL. No UI or Realtime changes are included in this migration.
+
+### Connected session screens
+
+After applying migrations 001–007, approved accounts load `get_house_state()` on sign-in. Admins can start/end sessions and open a bill to present/hide it. Members see no session, waiting, or the presented document with no navigation. Commands use the signed-in Supabase client; role checks remain in SQL. The browser refreshes the snapshot after each command and every 3 seconds while the tab is visible (except while an admin bill dialog is open). This is polling, not Realtime subscriptions yet. Access/read errors clear stale session content and offer Retry.
+
+The admin bill list reads real database records. No sample documents are inserted automatically; an empty database shows No bills yet. Imports remain disabled and voting UI is not connected. A blank bill body displays structural placeholder lines. No new SQL is needed for these UI changes beyond the previously applied migrations. Run `npm run build` after editing frontend sources, or restart `npm run dev`; backend watch mode alone does not rebuild frontend sources.
