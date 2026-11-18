@@ -1,16 +1,19 @@
+import { mountSessionUI } from './session-ui.js';
 import { createClient } from '@supabase/supabase-js';
 
 const main = document.querySelector('main');
 const crumb = document.querySelector('#crumb');
 const mode = document.querySelector('.mode');
 const escape = value => String(value).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
-let client, generation = 0;
+let client, generation = 0, disposeSession = () => {};
 const showError = message => {
-  const error = document.querySelector('#auth-error');
+  const error = document.querySelector('#auth-error') || document.querySelector('#session-message');
   if (error) error.textContent = message;
 };
 
 function login(message = '') {
+  disposeSession();
+  disposeSession = () => {};
   crumb.textContent = 'Sign in';
   mode.innerHTML = '';
   main.innerHTML = `<section class="auth-panel"><h1>Sign in</h1><p>House Leadership</p><form id="login-form"><label>Email<input type="email" name="email" autocomplete="username" required></label><label>Password<input type="password" name="password" autocomplete="current-password" required></label><p id="auth-error" role="alert">${escape(message)}</p><button class="primary" type="submit">Sign in</button></form></section>`;
@@ -32,6 +35,8 @@ function login(message = '') {
 
 async function updateIdentity() {
   const currentGeneration = ++generation;
+  disposeSession();
+  disposeSession = () => {};
   crumb.textContent = 'Checking access…';
   main.innerHTML = '<section class="auth-panel"><p>Checking your account…</p></section>';
   mode.innerHTML = '';
@@ -53,7 +58,11 @@ async function updateIdentity() {
       ++generation;
       login();
     };
-    main.innerHTML = `<section class="auth-panel"><h1>${approved ? 'Signed in' : 'Access pending'}</h1><p>${escape(user.email || '')}</p><p>${approved ? `Your role: <strong>${escape(membership.role)}</strong>` : 'An administrator must approve your membership.'}</p><p class="muted">${approved ? 'Account access is connected. Session and voting controls are being connected next.' : 'Contact House leadership for access.'}</p><p id="auth-error" role="alert"></p></section>`;
+    if (approved) {
+      disposeSession = mountSessionUI(client, main);
+    } else {
+      main.innerHTML = `<section class="auth-panel"><h1>Access pending</h1><p>${escape(user.email || '')}</p><p>An administrator must approve your membership.</p><p id="auth-error" role="alert"></p></section>`;
+    }
   } catch (error) {
     if (currentGeneration !== generation) return;
     main.innerHTML = `<section class="auth-panel"><h1>Unable to check access</h1><p id="auth-error" role="alert">${escape(error.message)}</p><button id="retry-auth" class="primary">Retry</button></section>`;

@@ -90,3 +90,9 @@ Tests assert display changes, member visibility, closed old voting, retained fin
 Run migration `202611170007_hide_house_bill.sql`, then run all of `supabase/tests/hide_house_bill.sql` separately. `hide_house_bill(p_session_id)` is admin-only and accepts only an existing active session. It takes the same lifecycle/session/ballot locks as present/end, closes all open ballots in that session, and clears its displayed bill while leaving the meeting active. Repeated calls are safe. Bills, votes, and finalized ballots remain intact. Member snapshots return the waiting state afterward.
 
 The rollback-based SQL checks cover authorization, invalid/ended sessions, repeated calls, voting closure, retained data, and member visibility. Run them against Supabase; Node tests do not execute SQL. No UI or Realtime changes are included in this migration.
+
+### Connected session screens
+
+After applying migrations 001–007, approved accounts load `get_house_state()` on sign-in. Admins can start/end sessions and open a bill to present/hide it. Members see no session, waiting, or the presented document with no navigation. Commands use the signed-in Supabase client; role checks remain in SQL. The browser refreshes the snapshot after each command and every 3 seconds while the tab is visible (except while an admin bill dialog is open). This is polling, not Realtime subscriptions yet. Access/read errors clear stale session content and offer Retry.
+
+The admin bill list reads real database records. No sample documents are inserted automatically; an empty database shows No bills yet. Imports remain disabled and voting UI is not connected. A blank bill body displays structural placeholder lines. No new SQL is needed for these UI changes beyond the previously applied migrations. Run `npm run build` after editing frontend sources, or restart `npm run dev`; backend watch mode alone does not rebuild frontend sources.
