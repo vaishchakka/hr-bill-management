@@ -1,3 +1,4 @@
+import { watchSession } from './session-sync.js';
 import { createSessionApi } from './session-api.js';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const placeholder = '<div class="placeholder-document" aria-label="Bill content placeholder"><span></span><span></span><span></span><span></span><span></span></div>';
@@ -5,14 +6,18 @@ const documentBody = bill => bill.body ? `<div class="body-copy">${esc(bill.body
 
 export function mountSessionUI(client, main) {
   const api = createSessionApi(client);
-  let disposed = false, state, busy = false, reading = false, last = '', selected = null;
+  let disposed = false, state, busy = false, reading = false, last = '', selected = null, syncStatus = 'Connecting live updates…', needsRefresh = false;
   main.innerHTML = '<h1>House session</h1><p>Loading session…</p>';
   const message = (text, isError = false) => {
     const el = main.querySelector('#session-message');
     if (el) { el.textContent = text; el.setAttribute('role', isError ? 'alert' : 'status'); }
   };
   function buttonsDisabled(value) {
-    main.querySelectorAll('[data-command]').forEach(el => { el.disabled = value; });
+    main.querySelectorAll('[data-command]').forEach(el => {
+      const kind = el.dataset.command;
+      el.disabled = value || (kind === 'present' && !state?.session) ||
+        (kind === 'hide' && (!state?.session || state.session.current_bill_id !== selected));
+    });
   }
   async function read(force = false) {
     if (disposed || reading || (busy && !force)) return;
@@ -30,7 +35,10 @@ export function mountSessionUI(client, main) {
       main.innerHTML = '<h1>Session unavailable</h1><p id="session-message" role="alert"></p><button id="retry-session" class="secondary">Retry</button>';
       message(error.message, true);
       main.querySelector('#retry-session').onclick = () => read();
-    } finally { reading = false; }
+    } finally {
+      reading = false;
+      if (!disposed) buttonsDisabled(busy);
+    }
   }
   async function command(action) {
     if (disposed || busy || reading || !state || state.role !== 'admin') return;
@@ -46,7 +54,10 @@ export function mountSessionUI(client, main) {
       if (!disposed) message(error.message, true);
     } finally {
       busy = false;
-      if (!disposed) buttonsDisabled(reading);
+      if (!disposed) {
+        buttonsDisabled(reading);
+        if (needsRefresh) { needsRefresh = false; void refresh(); }
+      }
     }
   }
   function openBill(id) {
@@ -73,7 +84,7 @@ export function mountSessionUI(client, main) {
     const admin = role === 'admin', current = bills.find(b => b.id === session?.current_bill_id);
     document.querySelector('#crumb').textContent = admin ? 'Admin workspace' : 'Member view';
     main.querySelector('dialog')?.close();
-    main.innerHTML = `<div class="heading"><div><h1>${admin ? 'Manage session' : 'House session'}</h1></div>${admin ? '<button class="secondary" disabled>Import agenda / plan</button><button class="secondary" disabled>Import bill</button>' : ''}</div><p id="session-message" role="status"></p>${admin ? `<section id="session-controls"><div><strong>${session ? 'Session active' : 'No active session'}</strong><p>${current ? 'Presenting: '+esc(current.title) : session ? 'Select a bill to present.' : ''}</p></div><button class="${session ? 'secondary' : 'primary'}" data-command="toggle">${session ? 'End session' : 'Start session'}</button></section><div id="bills">${bills.map(b => `<button class="bill connected-bill" data-bill="${esc(b.id)}"><span><strong>${esc(b.title)}</strong></span><span class="pill">${esc(b.status)}</span><span class="vote">${session?.current_bill_id === b.id ? 'Presenting' : 'Hidden'}</span><span>↗</span></button>`).join('') || '<div class="empty">No bills yet.</div>'}</div><dialog id="session-bill"></dialog>` : `<section id="presenter">${!session ? '<div class="waiting"><h2>No active session</h2></div>' : !current ? '<div class="waiting"><h2>Waiting for the next bill</h2></div>' : `<div class="presenter-top"><span class="pill Open">Currently being reviewed</span><span>${ballot?.status === 'open' ? 'Voting open' : 'Voting closed'}</span></div><h2>${esc(current.title)}</h2>${documentBody(current)}<p class="muted">Voting controls are not connected yet.</p>`}</section>`}<p class="demo">Session updates refresh every 3 seconds.</p>`;
+    main.innerHTML = `<div class="heading"><div><h1>${admin ? 'Manage session' : 'House session'}</h1></div>${admin ? '<button class="secondary" disabled>Import agenda / plan</button><button class="secondary" disabled>Import bill</button>' : ''}</div><p id="session-message" role="status"></p>${admin ? `<section id="session-controls"><div><strong>${session ? 'Session active' : 'No active session'}</strong><p>${current ? 'Presenting: '+esc(current.title) : session ? 'Select a bill to present.' : ''}</p></div><button class="${session ? 'secondary' : 'primary'}" data-command="toggle">${session ? 'End session' : 'Start session'}</button></section><div id="bills">${bills.map(b => `<button class="bill connected-bill" data-bill="${esc(b.id)}"><span><strong>${esc(b.title)}</strong></span><span class="pill">${esc(b.status)}</span><span class="vote">${session?.current_bill_id === b.id ? 'Presenting' : 'Hidden'}</span><span>↗</span></button>`).join('') || '<div class="empty">No bills yet.</div>'}</div><dialog id="session-bill"></dialog>` : `<section id="presenter">${!session ? '<div class="waiting"><h2>No active session</h2></div>' : !current ? '<div class="waiting"><h2>Waiting for the next bill</h2></div>' : `<div class="presenter-top"><span class="pill Open">Currently being reviewed</span><span>${ballot?.status === 'open' ? 'Voting open' : 'Voting closed'}</span></div><h2>${esc(current.title)}</h2>${documentBody(current)}<p class="muted">Voting controls are not connected yet.</p>`}</section>`}<p class="demo">${esc(syncStatus)}</p>`;
     if (admin) {
       const sessionId = session?.id;
       main.querySelector('[data-command="toggle"]').onclick = () => command(() => sessionId ? api.end(sessionId) : api.start());
@@ -82,17 +93,29 @@ export function mountSessionUI(client, main) {
     }
     if (busy || reading) buttonsDisabled(true);
   }
-  // Re-enable after a successful refresh; respect per-control conditions.
   async function refresh() {
-    if (disposed || busy || reading || document.hidden || main.querySelector('dialog[open]')) return;
+    if (disposed || document.hidden) return;
+    if (busy || reading) { needsRefresh = true; return; }
     await read();
-    if (!disposed && state) {
-      const toggle = main.querySelector('[data-command="toggle"]');
-      if (toggle) toggle.disabled = false;
+    if (needsRefresh && !disposed && !busy && !reading) {
+      needsRefresh = false;
+      await read();
     }
   }
-  read().then(() => { const button = main.querySelector('[data-command="toggle"]'); if (button) button.disabled = false; });
-  const timer = setInterval(refresh, 3000);
-  document.addEventListener('visibilitychange', refresh);
-  return () => { disposed = true; clearInterval(timer); document.removeEventListener('visibilitychange', refresh); main.querySelector('dialog')?.close(); };
+  const sync = watchSession(client, {
+    refresh,
+    status(text) {
+      syncStatus = text;
+      const footer = main.querySelector('.demo');
+      if (footer) footer.textContent = text;
+    },
+  });
+  const onVisible = () => { if (!document.hidden) void sync.refresh(); };
+  document.addEventListener('visibilitychange', onVisible);
+  return () => {
+    disposed = true;
+    sync.dispose();
+    document.removeEventListener('visibilitychange', onVisible);
+    main.querySelector('dialog')?.close();
+  };
 }
