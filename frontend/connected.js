@@ -1,3 +1,4 @@
+import { sendEmailCode, verifyEmailCode } from './email-auth.js';
 import { mountSessionUI } from './session-ui.js';
 import { createClient } from '@supabase/supabase-js';
 
@@ -14,21 +15,46 @@ const showError = message => {
 function login(message = '') {
   disposeSession();
   disposeSession = () => {};
-  crumb.textContent = 'Sign in';
+  crumb.textContent = 'Sign in / Join';
   mode.innerHTML = '';
-  main.innerHTML = `<section class="auth-panel"><h1>Sign in</h1><p>House Leadership</p><form id="login-form"><label>Email<input type="email" name="email" autocomplete="username" required></label><label>Password<input type="password" name="password" autocomplete="current-password" required></label><p id="auth-error" role="alert">${escape(message)}</p><button class="primary" type="submit">Sign in</button></form></section>`;
-  document.querySelector('#login-form').onsubmit = async event => {
+  main.innerHTML = `<section class="auth-panel"><h1>Welcome</h1><p>Use your GT email to sign in or create an account. HR membership is required for access.</p><form id="email-form"><label>GT email<input type="email" name="email" autocomplete="email" placeholder="you@gatech.edu" required></label><p id="auth-error" role="alert">${escape(message)}</p><button class="primary">Email me a code</button></form><details class="password-option"><summary>Use an existing password instead</summary><form id="password-form"><label>Email<input type="email" name="email" autocomplete="username" required></label><label>Password<input type="password" name="password" autocomplete="current-password" required></label><button class="secondary">Sign in</button></form></details></section>`;
+  document.querySelector('#email-form').onsubmit = async event => {
     event.preventDefault();
     const form = event.currentTarget, button = form.querySelector('button');
-    button.disabled = true;
-    showError('');
-    const values = new FormData(form);
+    button.disabled = true; showError('');
+    try { const email = await sendEmailCode(client, new FormData(form).get('email')); codeForm(email); }
+    catch (error) { showError(error.message); }
+    finally { button.disabled = false; }
+  };
+  document.querySelector('#password-form').onsubmit = async event => {
+    event.preventDefault();
+    const form = event.currentTarget, button = form.querySelector('button'), values = new FormData(form);
+    button.disabled = true; showError('');
     try {
       const { error } = await client.auth.signInWithPassword({ email: values.get('email'), password: values.get('password') });
       if (error) throw error;
-      form.reset();
-      await updateIdentity();
+      form.reset(); await updateIdentity();
     } catch (error) { showError(error.message); }
+    finally { button.disabled = false; }
+  };
+}
+function codeForm(email) {
+  main.innerHTML = `<section class="auth-panel"><h1>Check your email</h1><p>Enter the code sent to ${escape(email)}.</p><form id="code-form"><label>Sign-in code<input name="code" inputmode="numeric" autocomplete="one-time-code" required></label><p id="auth-error" role="alert"></p><button class="primary">Verify and continue</button></form><p id="resend-status" role="status"></p><button id="resend-code" class="secondary" disabled>Resend code</button> <button id="change-email" class="secondary">Change email</button></section>`;
+  const resend = document.querySelector('#resend-code');
+  const cooldown = () => { resend.disabled = true; setTimeout(() => { if (resend.isConnected) resend.disabled = false; }, 60000); };
+  cooldown();
+  resend.onclick = async () => {
+    resend.disabled = true; showError('');
+    try { await sendEmailCode(client, email); document.querySelector('#resend-status').textContent = 'New code requested. Check your inbox.'; cooldown(); }
+    catch (error) { showError(error.message); resend.disabled = false; }
+  };
+  document.querySelector('#change-email').onclick = () => login();
+  document.querySelector('#code-form').onsubmit = async event => {
+    event.preventDefault();
+    const form = event.currentTarget, button = form.querySelector('button');
+    button.disabled = true; showError('');
+    try { await verifyEmailCode(client, email, new FormData(form).get('code')); form.reset(); await updateIdentity(); }
+    catch (error) { showError(error.message); }
     finally { button.disabled = false; }
   };
 }
@@ -45,6 +71,9 @@ async function updateIdentity() {
     const { data: { user }, error } = await client.auth.getUser();
     if (currentGeneration !== generation) return;
     if (error || !user) { login(); return; }
+    const { error: claimError } = await client.rpc('claim_house_membership');
+    if (currentGeneration !== generation) return;
+    if (claimError) throw new Error('Membership setup is unavailable. Apply the email roster migration, then retry.');
     const { data: membership, error: membershipError } = await client
       .from('house_members').select('role').eq('user_id', user.id).maybeSingle();
     if (currentGeneration !== generation) return;
